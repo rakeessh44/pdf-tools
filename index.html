@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combined PDF Tools</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script>
+        // Set the workerSrc for PDF.js to load the worker script
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    </script>
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+        }
+        /* Custom spinner for loading */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6; /* Blue spinner */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        .spinner-small { /* Smaller spinner for preview box */
+            width: 20px;
+            height: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Drag feedback for list items (Organizer) */
+        .dragging {
+            opacity: 0.5;
+            border: 2px dashed #3b82f6;
+        }
+        .drag-over-top {
+            border-top: 2px solid #3b82f6;
+        }
+        .drag-over-bottom {
+            border-bottom: 2px solid #3b82f6;
+        }
+
+        /* Tool block styling */
+        .tool-block {
+            border: 1px solid #e2e8f0; /* Light gray border */
+            border-radius: 0.75rem; /* Rounded corners */
+            margin-bottom: 1rem; /* Spacing between blocks */
+            overflow: hidden; /* Hide overflowing content initially */
+            background-color: #ffffff; /* White background */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Subtle shadow */
+        }
+
+        .tool-header {
+            padding: 1.5rem;
+            cursor: pointer;
+            background-color: #4284ea; /* Lighter background for header */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .tool-header:hover {
+            background-color: #edf2f7; /* Slightly darker on hover */
+        }
+
+        .tool-header h2 {
+            font-size: 1.5rem; /* Larger title */
+            font-weight: 700; /* Bold */
+            color: #2d3748; /* Dark gray text */
+        }
+
+        .tool-content {
+            padding: 1.5rem;
+            display: none; /* Hidden by default */
+        }
+
+        /* Optional: Add a subtle transition for content visibility */
+        .tool-content.active {
+            display: block;
+        }
+        
+        .arrow-icon {
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .tool-header.active .arrow-icon {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-4xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">
+            PDF Tools
+        </h1>
+
+        <div id="messageBox" class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded-lg relative hidden mb-4" role="alert">
+            <span id="messageText" class="block sm:inline"></span>
+            <span class="absolute top-0 bottom-0 right-0 px-4 py-3 cursor-pointer" onclick="document.getElementById('messageBox').classList.add('hidden');">
+                <svg class="fill-current h-6 w-6 text-blue-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.196l-2.651 3.653a1.2 1.2 0 1 1-1.697-1.697l3.653-2.651-3.653-2.651a1.2 1.2 0 1 1 1.697-1.697L10 8.804l2.651-3.653a1.2 1.2 0 0 1 1.697 1.697L11.196 10l3.652 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
+            </span>
+        </div>
+
+        <div id="pdfToJpegBlock" class="tool-block">
+            <div id="pdfToJpegHeader" class="tool-header">
+                <h2>PDF to JPEG Converter</h2>
+                <svg class="arrow-icon w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+            <div id="pdfToJpegContent" class="tool-content">
+                <p class="text-gray-600 text-center mb-4">
+                    Select a PDF file to convert each of its pages into separate JPEG images.
+                </p>
+                <div class="mb-6">
+                    <label for="pdfInputConverter" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Select a PDF File:
+                    </label>
+                    <input
+                        type="file"
+                        id="pdfInputConverter"
+                        accept="application/pdf"
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                    <p id="fileInfoConverter" class="mt-2 text-sm text-gray-600"></p>
+                </div>
+
+                <button
+                    id="convertPdfToJpegBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                           transition duration-300 ease-in-out flex items-center justify-center space-x-2 mb-6"
+                    disabled
+                >
+                    <span id="buttonTextPdfToJpeg">Convert PDF to JPEGs</span>
+                    <div id="loadingSpinnerPdfToJpeg" class="spinner hidden"></div>
+                </button>
+
+                <div id="outputContainerConverter" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    </div>
+                <button
+                    id="resetConverterBtn"
+                    class="mt-4 w-full bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg
+                           focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-opacity-75
+                           transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                >
+                    Reset Converter
+                </button>
+            </div>
+        </div>
+
+        <div id="jpegToPdfBlock" class="tool-block">
+            <div id="jpegToPdfHeader" class="tool-header">
+                <h2>JPEG to PDF Converter</h2>
+                <svg class="arrow-icon w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+            <div id="jpegToPdfContent" class="tool-content">
+                <p class="text-gray-600 text-center mb-4">
+                    Select JPEG image files to convert them into a single PDF document.
+                </p>
+
+                <div class="mb-6">
+                    <label for="jpegInput" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Select JPEG Images (multiple allowed):
+                    </label>
+                    <input
+                        type="file"
+                        id="jpegInput"
+                        accept="image/jpeg,image/png"
+                        multiple
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                    <p id="jpegFileCount" class="mt-2 text-sm text-gray-600">No files selected.</p>
+                </div>
+
+                <div id="previewContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-6">
+                    </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                    <button
+                        id="convertJpegToPdfBtn"
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                        disabled
+                    >
+                        <span id="buttonTextJpegToPdf">Convert to PDF & Download</span>
+                        <div id="loadingSpinnerJpegToPdf" class="spinner hidden"></div>
+                    </button>
+                    <button
+                        id="resetJpegToPdfBtn"
+                        class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="pdfSplitterBlock" class="tool-block">
+            <div id="pdfSplitterHeader" class="tool-header">
+                <h2>Split PDF</h2>
+                <svg class="arrow-icon w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+            <div id="pdfSplitterContent" class="tool-content">
+                <p class="text-gray-600 text-center mb-4">
+                    Select a PDF file to split it into separate PDF documents, then download them as a ZIP archive.
+                </p>
+
+                <div class="mb-6">
+                    <label for="pdfInputSplitter" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Select a PDF File:
+                    </label>
+                    <input
+                        type="file"
+                        id="pdfInputSplitter"
+                        accept="application/pdf"
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                    <p id="fileInfoSplitter" class="mt-2 text-sm text-gray-600"></p>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                    <button
+                        id="splitBtn"
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                        disabled
+                    >
+                        <span id="buttonTextSplitter">Split PDF and Download ZIP</span>
+                        <div id="loadingSpinnerSplitter" class="spinner hidden"></div>
+                    </button>
+                    <button
+                        id="resetSplitterBtn"
+                        class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="pdfMergeBlock" class="tool-block">
+            <div id="pdfMergeHeader" class="tool-header">
+                <h2>Merge & Reorder PDFs</h2>
+                <svg class="arrow-icon w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+            <div id="pdfMergeContent" class="tool-content">
+                <p class="text-gray-600 text-center mb-4">
+                    Upload multiple PDF files, reorder them as needed, and combine them into a single PDF.
+                </p>
+
+                <div class="mb-6">
+                    <label for="pdfInputOrganizer" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Select PDF Files:
+                    </label>
+                    <input
+                        type="file"
+                        id="pdfInputOrganizer"
+                        accept="application/pdf"
+                        multiple
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                    <p id="fileCountOrganizer" class="mt-2 text-sm text-gray-600">No files selected.</p>
+                    <div id="fileListContainerOrganizer" class="mt-4 border border-gray-200 rounded-lg p-3 max-h-64 overflow-y-auto hidden">
+                        <ul id="fileListOrganizer" class="divide-y divide-gray-100">
+                            </ul>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                    <button
+                        id="combineAndDownloadBtn"
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                        disabled
+                    >
+                        <span id="buttonTextOrganizer">Combine & Download PDF</span>
+                        <div id="loadingSpinnerOrganizer" class="spinner hidden"></div>
+                    </button>
+                    <button
+                        id="resetOrganizerBtn"
+                        class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="pageNumbererBlock" class="tool-block">
+            <div id="pageNumbererHeader" class="tool-header">
+                <h2>Add Page Numbers to PDF</h2>
+                <svg class="arrow-icon w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+            <div id="pageNumbererContent" class="tool-content">
+                <p class="text-gray-600 text-center mb-4">
+                    Select a PDF file and choose the page numbering options, then download the new PDF.
+                </p>
+
+                <div class="mb-4">
+                    <label for="pdfInputNumberer" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Select a PDF File:
+                    </label>
+                    <input
+                        type="file"
+                        id="pdfInputNumberer"
+                        accept="application/pdf"
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                    <p id="fileInfoNumberer" class="mt-2 text-sm text-gray-600"></p>
+                </div>
+
+                <div class="mb-4">
+                    <label for="positionSelect" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Page Number Position:
+                    </label>
+                    <select
+                        id="positionSelect"
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg p-2.5 bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                        <option value="bottom-center">Bottom Center</option>
+                        <option value="bottom-right">Bottom Right</option>
+                        <option value="bottom-left">Bottom Left</option>
+                        <option value="top-center">Top Center</option>
+                        <option value="top-right">Top Right</option>
+                        <option value="top-left">Top Left</option>
+                    </select>
+                </div>
+
+                <div class="mb-6">
+                    <label for="startPageInput" class="block text-gray-700 text-sm font-semibold mb-2">
+                        Start Page Number From (e.g., 1 for actual page 1):
+                    </label>
+                    <input
+                        type="number"
+                        id="startPageInput"
+                        value="1"
+                        min="1"
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg p-2.5 bg-gray-50
+                               focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                    <button
+                        id="addNumbersBtn"
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                        disabled
+                    >
+                        <span id="buttonTextNumberer">Add Page Numbers & Download PDF</span>
+                        <div id="loadingSpinnerNumberer" class="spinner hidden"></div>
+                    </button>
+                    <button
+                        id="resetNumbererBtn"
+                        class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-opacity-75
+                               transition duration-300 ease-in-out flex items-center justify-center space-x-2"
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================
+        // Global UI Elements and Helper Functions (Shared)
+        // =========================================================
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+
+        /**
+         * Displays a message in the shared message box.
+         * @param {string} msg - The message to display.
+         * @param {string} type - The type of message (e.g., 'info', 'error', 'success').
+         */
+        function showMessage(msg, type = 'info') {
+            messageText.textContent = msg;
+            messageBox.classList.remove('hidden');
+
+            // Reset classes
+            messageBox.classList.remove('bg-blue-100', 'border-blue-400', 'text-blue-700');
+            messageBox.classList.remove('bg-red-100', 'border-red-400', 'text-red-700');
+            messageBox.classList.remove('bg-green-100', 'border-green-400', 'text-green-700');
+
+            // Apply type-specific classes
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+            } else if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'border-green-400', 'text-green-700');
+            } else { // default info
+                messageBox.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
+            }
+        }
+
+        /**
+         * Clears any displayed messages.
+         */
+        function clearMessage() {
+            messageBox.classList.add('hidden');
+            messageText.textContent = '';
+        }
+
+        // =========================================================
+        // Tool Block Toggle Functionality
+        // =========================================================
+        const toolBlocks = document.querySelectorAll('.tool-block');
+
+        toolBlocks.forEach(block => {
+            const header = block.querySelector('.tool-header');
+            const content = block.querySelector('.tool-content');
+            const arrowIcon = block.querySelector('.arrow-icon');
+
+            header.addEventListener('click', () => {
+                const isActive = content.classList.contains('active');
+
+                // Close all other open tool blocks
+                toolBlocks.forEach(otherBlock => {
+                    const otherContent = otherBlock.querySelector('.tool-content');
+                    const otherHeader = otherBlock.querySelector('.tool-header');
+                    const otherArrowIcon = otherBlock.querySelector('.arrow-icon');
+                    if (otherContent !== content && otherContent.classList.contains('active')) {
+                        otherContent.classList.remove('active');
+                        otherHeader.classList.remove('active');
+                        otherArrowIcon.style.transform = 'rotate(0deg)';
+                    }
+                });
+                
+                // Toggle the clicked tool block
+                if (isActive) {
+                    content.classList.remove('active');
+                    header.classList.remove('active');
+                    arrowIcon.style.transform = 'rotate(0deg)';
+                } else {
+                    content.classList.add('active');
+                    header.classList.add('active');
+                    arrowIcon.style.transform = 'rotate(90deg)';
+                }
+                clearMessage(); // Clear messages when a tool is opened/closed
+            });
+        });
+
+        // =========================================================
+        // PDF Page Numberer Logic (from 3.html)
+        // =========================================================
+        const pdfInputNumberer = document.getElementById('pdfInputNumberer');
+        const fileInfoNumberer = document.getElementById('fileInfoNumberer');
+        const positionSelect = document.getElementById('positionSelect');
+        const startPageInput = document.getElementById('startPageInput');
+        const addNumbersBtn = document.getElementById('addNumbersBtn');
+        const resetNumbererBtn = document.getElementById('resetNumbererBtn');
+        const loadingSpinnerNumberer = document.getElementById('loadingSpinnerNumberer');
+        const buttonTextNumberer = document.getElementById('buttonTextNumberer');
+
+        let selectedPdfFileNumberer = null; // To store the selected PDF File object for numbering
+
+        // Get pdf-lib from the global window object (already loaded in head)
+        const { PDFDocument, rgb, StandardFonts } = PDFLib;
+
+        /**
+         * Shows the loading spinner and disables buttons for the Numberer.
+         * @param {string} text - The text to display on the button.
+         */
+        function showLoadingNumberer(text = 'Processing...') {
+            loadingSpinnerNumberer.classList.remove('hidden');
+            buttonTextNumberer.textContent = text;
+            addNumbersBtn.disabled = true;
+            addNumbersBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            resetNumbererBtn.disabled = true;
+            resetNumbererBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Hides the loading spinner and re-enables buttons for the Numberer.
+         * @param {string} text - The default text for the button.
+         */
+        function hideLoadingNumberer(text = 'Add Page Numbers & Download PDF') {
+            loadingSpinnerNumberer.classList.add('hidden');
+            buttonTextNumberer.textContent = text;
+            addNumbersBtn.disabled = selectedPdfFileNumberer === null; // Re-enable if file selected
+            addNumbersBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            resetNumbererBtn.disabled = false;
+            resetNumbererBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Handles the change event of the file input for the Numberer.
+         */
+        pdfInputNumberer.addEventListener('change', (event) => {
+            clearMessage();
+            const files = event.target.files;
+            if (files.length === 0) {
+                fileInfoNumberer.textContent = 'No file selected.';
+                selectedPdfFileNumberer = null;
+                addNumbersBtn.disabled = true;
+                return;
+            }
+            const file = files[0];
+            if (file.type === 'application/pdf') {
+                selectedPdfFileNumberer = file;
+                fileInfoNumberer.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                addNumbersBtn.disabled = false;
+            } else {
+                showMessage('Please select a valid PDF file for numbering.', 'error');
+                fileInfoNumberer.textContent = 'No file selected.';
+                selectedPdfFileNumberer = null;
+                addNumbersBtn.disabled = true;
+            }
+        });
+
+        /**
+         * Adds page numbers to the selected PDF file.
+         */
+        addNumbersBtn.addEventListener('click', async () => {
+            if (!selectedPdfFileNumberer) {
+                showMessage('Please select a PDF file first.', 'error');
+                return;
+            }
+
+            showLoadingNumberer();
+            clearMessage();
+
+            try {
+                const arrayBuffer = await selectedPdfFileNumberer.arrayBuffer();
+                const pdfDoc = await PDFDocument.load(arrayBuffer);
+                const pages = pdfDoc.getPages();
+                const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                const startPageNum = parseInt(startPageInput.value, 10);
+
+                for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i];
+                    const pageNumber = startPageNum + i;
+                    const pageText = `${pageNumber}`;
+                    const textSize = 12;
+                    const textWidth = font.widthOfTextAtSize(pageText, textSize);
+                    const textHeight = font.heightAtSize(textSize);
+
+                    let x, y;
+                    const margin = 30; // Margin from the edge
+
+                    switch (positionSelect.value) {
+                        case 'bottom-center':
+                            x = (page.getWidth() - textWidth) / 2;
+                            y = margin;
+                            break;
+                        case 'bottom-right':
+                            x = page.getWidth() - textWidth - margin;
+                            y = margin;
+                            break;
+                        case 'bottom-left':
+                            x = margin;
+                            y = margin;
+                            break;
+                        case 'top-center':
+                            x = (page.getWidth() - textWidth) / 2;
+                            y = page.getHeight() - textHeight - margin;
+                            break;
+                        case 'top-right':
+                            x = page.getWidth() - textWidth - margin;
+                            y = page.getHeight() - textHeight - margin;
+                            break;
+                        case 'top-left':
+                            x = margin;
+                            y = page.getHeight() - textHeight - margin;
+                            break;
+                        default:
+                            x = (page.getWidth() - textWidth) / 2;
+                            y = margin;
+                    }
+
+                    page.drawText(pageText, {
+                        x,
+                        y,
+                        font,
+                        size: textSize,
+                        color: rgb(0, 0, 0),
+                    });
+                }
+
+                const pdfBytes = await pdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `numbered_${selectedPdfFileNumberer.name}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                showMessage('PDF with page numbers downloaded successfully!', 'success');
+
+            } catch (error) {
+                console.error('Error adding page numbers:', error);
+                showMessage('An error occurred while adding page numbers. Please ensure it is a valid PDF. Check console for details.', 'error');
+            } finally {
+                hideLoadingNumberer();
+            }
+        });
+
+        /**
+         * Handles the click event of the reset button for the Numberer.
+         */
+        resetNumbererBtn.addEventListener('click', () => {
+            pdfInputNumberer.value = ''; // Clear the file input
+            selectedPdfFileNumberer = null; // Clear the selected file reference
+            fileInfoNumberer.textContent = 'No file selected.'; // Reset file info
+            addNumbersBtn.disabled = true; // Disable the button initially
+            startPageInput.value = '1'; // Reset start page number
+            positionSelect.value = 'bottom-center'; // Reset position
+            clearMessage(); // Clear any messages
+            showMessage('Page numberer has been reset.', 'info');
+            hideLoadingNumberer(); // Ensure buttons are in correct reset state
+        });
+
+
+        // =========================================================
+        // Merge & Reorder PDFs Logic (formerly PDF Organizer & Combiner)
+        // =========================================================
+        const pdfInputOrganizer = document.getElementById('pdfInputOrganizer');
+        const fileCountOrganizerSpan = document.getElementById('fileCountOrganizer');
+        const fileListContainerOrganizer = document.getElementById('fileListContainerOrganizer');
+        const fileListOrganizer = document.getElementById('fileListOrganizer');
+        const combineAndDownloadBtn = document.getElementById('combineAndDownloadBtn');
+        const resetOrganizerBtn = document.getElementById('resetOrganizerBtn');
+        const loadingSpinnerOrganizer = document.getElementById('loadingSpinnerOrganizer');
+        const buttonTextOrganizer = document.getElementById('buttonTextOrganizer');
+
+        let selectedPdfFilesOrganizer = []; // Array to store selected File objects for organizer
+
+        /**
+         * Displays a loading spinner and disables buttons for the Organizer.
+         * @param {string} text - The text to display on the button.
+         */
+        function showLoadingOrganizer(text = 'Combining...') {
+            loadingSpinnerOrganizer.classList.remove('hidden');
+            buttonTextOrganizer.textContent = text;
+            combineAndDownloadBtn.disabled = true;
+            combineAndDownloadBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            resetOrganizerBtn.disabled = true;
+            resetOrganizerBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Hides the loading spinner and re-enables buttons for the Organizer.
+         * @param {string} text - The default text for the button.
+         */
+        function hideLoadingOrganizer(text = 'Combine & Download PDF') {
+            loadingSpinnerOrganizer.classList.add('hidden');
+            buttonTextOrganizer.textContent = text;
+            combineAndDownloadBtn.disabled = selectedPdfFilesOrganizer.length === 0;
+            combineAndDownloadBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            resetOrganizerBtn.disabled = false;
+            resetOrganizerBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Renders the list of selected PDF files in the UI.
+         */
+        function renderFileListOrganizer() {
+            fileListOrganizer.innerHTML = '';
+            if (selectedPdfFilesOrganizer.length === 0) {
+                fileCountOrganizerSpan.textContent = 'No files selected.';
+                fileListContainerOrganizer.classList.add('hidden');
+                combineAndDownloadBtn.disabled = true;
+                return;
+            }
+
+            fileCountOrganizerSpan.textContent = `${selectedPdfFilesOrganizer.length} file(s) selected.`;
+            fileListContainerOrganizer.classList.remove('hidden');
+            combineAndDownloadBtn.disabled = false;
+
+            selectedPdfFilesOrganizer.forEach((file, index) => {
+                const listItem = document.createElement('li');
+                listItem.classList.add('flex', 'items-center', 'justify-between', 'py-2', 'px-3', 'hover:bg-gray-50', 'rounded-md', 'transition-colors', 'duration-200');
+                listItem.setAttribute('draggable', true);
+                listItem.dataset.index = index;
+
+                listItem.innerHTML = `
+                    <div class="flex items-center flex-grow min-w-0">
+                        <svg class="w-5 h-5 text-gray-400 mr-3 cursor-grab" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        <span class="text-gray-800 truncate">${file.name}</span>
+                    </div>
+                    <button class="ml-4 text-red-500 hover:text-red-700 focus:outline-none remove-file-btn" data-index="${index}">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                `;
+                fileListOrganizer.appendChild(listItem);
+            });
+
+            addDragAndDropListenersOrganizer();
+            addRemoveFileListenersOrganizer();
+        }
+
+        /**
+         * Adds event listeners for drag and drop functionality.
+         */
+        function addDragAndDropListenersOrganizer() {
+            const listItems = fileListOrganizer.querySelectorAll('li');
+            let dragSrcEl = null;
+
+            listItems.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    dragSrcEl = item;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/html', item.innerHTML);
+                    item.classList.add('dragging');
+                });
+
+                item.addEventListener('dragover', (e) => {
+                    e.preventDefault(); // Necessary to allow drop
+                    e.dataTransfer.dropEffect = 'move';
+                    item.classList.remove('drag-over-top', 'drag-over-bottom'); // Clear previous
+                    const rect = item.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    if (e.clientY < midY) {
+                        item.classList.add('drag-over-top');
+                    } else {
+                        item.classList.add('drag-over-bottom');
+                    }
+                });
+
+                item.addEventListener('dragleave', () => {
+                    item.classList.remove('drag-over-top', 'drag-over-bottom');
+                });
+
+                item.addEventListener('drop', (e) => {
+                    e.stopPropagation(); // Stops some browsers from redirecting
+                    item.classList.remove('drag-over-top', 'drag-over-bottom');
+
+                    if (dragSrcEl !== item) {
+                        const dragIndex = parseInt(dragSrcEl.dataset.index);
+                        const dropIndex = parseInt(item.dataset.index);
+
+                        const draggedFile = selectedPdfFilesOrganizer[dragIndex];
+                        selectedPdfFilesOrganizer.splice(dragIndex, 1); // Remove from old position
+
+                        const rect = item.getBoundingClientRect();
+                        const midY = rect.top + rect.height / 2;
+                        if (e.clientY < midY) {
+                            // Drop above current item
+                            selectedPdfFilesOrganizer.splice(dropIndex, 0, draggedFile);
+                        } else {
+                            // Drop below current item
+                            selectedPdfFilesOrganizer.splice(dropIndex + 1, 0, draggedFile);
+                        }
+                        renderFileListOrganizer(); // Re-render the list to reflect changes
+                    }
+                });
+
+                item.addEventListener('dragend', () => {
+                    listItems.forEach(i => i.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom'));
+                    dragSrcEl = null;
+                });
+            });
+        }
+
+        /**
+         * Adds event listeners for removing files from the list.
+         */
+        function addRemoveFileListenersOrganizer() {
+            document.querySelectorAll('.remove-file-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const indexToRemove = parseInt(e.currentTarget.dataset.index);
+                    selectedPdfFilesOrganizer.splice(indexToRemove, 1);
+                    renderFileListOrganizer();
+                    clearMessage();
+                    showMessage('File removed.', 'info');
+                });
+            });
+        }
+
+        /**
+         * Handles the change event of the file input for the Organizer.
+         */
+        pdfInputOrganizer.addEventListener('change', (event) => {
+            clearMessage();
+            const files = Array.from(event.target.files);
+            const validPdfs = files.filter(file => file.type === 'application/pdf');
+
+            if (validPdfs.length === 0 && files.length > 0) {
+                showMessage('Only PDF files are supported for merging.', 'error');
+            }
+
+            selectedPdfFilesOrganizer = selectedPdfFilesOrganizer.concat(validPdfs);
+            renderFileListOrganizer();
+            if (validPdfs.length > 0) {
+                showMessage(`${validPdfs.length} PDF file(s) added.`, 'info');
+            }
+        });
+
+        /**
+         * Handles the click event for combining and downloading PDFs.
+         */
+        combineAndDownloadBtn.addEventListener('click', async () => {
+            if (selectedPdfFilesOrganizer.length === 0) {
+                showMessage('Please select PDF files to merge.', 'error');
+                return;
+            }
+            if (selectedPdfFilesOrganizer.length === 1) {
+                showMessage('Please select at least two PDF files to merge, or use the single file tools.', 'error');
+                return;
+            }
+
+            showLoadingOrganizer();
+            clearMessage();
+
+            try {
+                const mergedPdf = await PDFDocument.create();
+
+                for (let i = 0; i < selectedPdfFilesOrganizer.length; i++) {
+                    const file = selectedPdfFilesOrganizer[i];
+                    showMessage(`Reading and merging: ${file.name} (${i + 1}/${selectedPdfFilesOrganizer.length})`, 'info');
+
+                    const fileBytes = await file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(fileBytes);
+
+                    const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+                    copiedPages.forEach(page => mergedPdf.addPage(page));
+                }
+
+                const mergedPdfBytes = await mergedPdf.save();
+
+                const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'merged_documents.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                showMessage('PDFs merged and downloaded successfully!', 'success');
+
+            } catch (error) {
+                console.error('Error merging PDFs:', error);
+                showMessage('An error occurred during merging. Please ensure valid PDF files were selected. Check console for details.', 'error');
+            } finally {
+                hideLoadingOrganizer();
+            }
+        });
+
+        /**
+         * Handles the click event of the reset button for the Organizer.
+         */
+        resetOrganizerBtn.addEventListener('click', () => {
+            pdfInputOrganizer.value = ''; // Clear the file input
+            selectedPdfFilesOrganizer = []; // Clear the selected files array
+            renderFileListOrganizer(); // Update UI
+            clearMessage(); // Clear any messages
+            showMessage('PDF merge & reorder has been reset.', 'info');
+            hideLoadingOrganizer(); // Ensure buttons are in correct reset state
+        });
+
+
+        // =========================================================
+        // PDF to JPEG Converter Logic (from 3.html)
+        // =========================================================
+        const pdfInputConverter = document.getElementById('pdfInputConverter');
+        const fileInfoConverter = document.getElementById('fileInfoConverter');
+        const convertPdfToJpegBtn = document.getElementById('convertPdfToJpegBtn');
+        const resetConverterBtn = document.getElementById('resetConverterBtn');
+        const outputContainerConverter = document.getElementById('outputContainerConverter');
+        const loadingSpinnerPdfToJpeg = document.getElementById('loadingSpinnerPdfToJpeg');
+        const buttonTextPdfToJpeg = document.getElementById('buttonTextPdfToJpeg');
+
+        let selectedPdfFileConverter = null; // To store the selected PDF File object for conversion
+
+        /**
+         * Shows the loading spinner and disables buttons for the PDF to JPEG Converter.
+         * @param {string} text - The text to display on the button.
+         */
+        function showLoadingConverter(text = 'Converting...') {
+            loadingSpinnerPdfToJpeg.classList.remove('hidden');
+            buttonTextPdfToJpeg.textContent = text;
+            convertPdfToJpegBtn.disabled = true;
+            convertPdfToJpegBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            resetConverterBtn.disabled = true;
+            resetConverterBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Hides the loading spinner and re-enables buttons for the PDF to JPEG Converter.
+         * @param {string} text - The default text for the button.
+         */
+        function hideLoadingConverter(text = 'Convert PDF to JPEGs') {
+            loadingSpinnerPdfToJpeg.classList.add('hidden');
+            buttonTextPdfToJpeg.textContent = text;
+            convertPdfToJpegBtn.disabled = selectedPdfFileConverter === null;
+            convertPdfToJpegBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            resetConverterBtn.disabled = false;
+            resetConverterBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Handles the change event of the file input for the PDF to JPEG Converter.
+         */
+        pdfInputConverter.addEventListener('change', (event) => {
+            clearMessage();
+            const files = event.target.files;
+            if (files.length === 0) {
+                fileInfoConverter.textContent = 'No file selected.';
+                selectedPdfFileConverter = null;
+                convertPdfToJpegBtn.disabled = true;
+                outputContainerConverter.innerHTML = ''; // Clear previous output
+                return;
+            }
+            const file = files[0];
+            if (file.type === 'application/pdf') {
+                selectedPdfFileConverter = file;
+                fileInfoConverter.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                convertPdfToJpegBtn.disabled = false;
+                outputContainerConverter.innerHTML = ''; // Clear previous output
+            } else {
+                showMessage('Please select a valid PDF file for conversion.', 'error');
+                fileInfoConverter.textContent = 'No file selected.';
+                selectedPdfFileConverter = null;
+                convertPdfToJpegBtn.disabled = true;
+                outputContainerConverter.innerHTML = ''; // Clear previous output
+            }
+        });
+
+        /**
+         * Converts the selected PDF to JPEG images.
+         */
+        convertPdfToJpegBtn.addEventListener('click', async () => {
+            if (!selectedPdfFileConverter) {
+                showMessage('Please select a PDF file first.', 'error');
+                return;
+            }
+
+            showLoadingConverter();
+            clearMessage();
+            outputContainerConverter.innerHTML = ''; // Clear previous output
+
+            try {
+                const fileReader = new FileReader();
+                fileReader.readAsArrayBuffer(selectedPdfFileConverter);
+
+                fileReader.onload = async () => {
+                    const pdfData = new Uint8Array(fileReader.result);
+                    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+                    const pdf = await loadingTask.promise;
+
+                    for (let i = 0; i < pdf.numPages; i++) {
+                        const pageNum = i + 1;
+                        showMessage(`Rendering page ${pageNum} of ${pdf.numPages}...`, 'info');
+                        const page = await pdf.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 1.5 }); // Scale for better resolution
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                        const imgData = canvas.toDataURL('image/jpeg', 0.9); // Convert to JPEG
+                        const img = document.createElement('img');
+                        img.src = imgData;
+                        img.classList.add('w-full', 'h-auto', 'rounded-lg', 'shadow-md', 'object-contain');
+                        outputContainerConverter.appendChild(img);
+                    }
+                    showMessage('PDF successfully converted to JPEGs!', 'success');
+                };
+
+                fileReader.onerror = (error) => {
+                    showMessage('Failed to read PDF file.', 'error');
+                    console.error('FileReader error:', error);
+                };
+
+            } catch (error) {
+                console.error('Error during PDF to JPEG conversion:', error);
+                showMessage('An error occurred during conversion. Please ensure it is a valid PDF.', 'error');
+            } finally {
+                hideLoadingConverter();
+            }
+        });
+
+        /**
+         * Handles the click event of the reset button for the Converter.
+         */
+        resetConverterBtn.addEventListener('click', () => {
+            pdfInputConverter.value = ''; // Clear the file input
+            selectedPdfFileConverter = null; // Clear the selected file reference
+            fileInfoConverter.textContent = 'No file selected.'; // Reset file info
+            outputContainerConverter.innerHTML = ''; // Clear any displayed images
+            convertPdfToJpegBtn.disabled = true; // Disable the button initially
+            clearMessage(); // Clear any messages
+            showMessage('PDF to JPEG converter has been reset.', 'info');
+            hideLoadingConverter('Convert PDF to JPEGs'); // Ensure buttons are in correct reset state
+        });
+
+
+        // =========================================================
+        // JPEG to PDF Converter Logic (from 4.html)
+        // =========================================================
+        const jpegInput = document.getElementById('jpegInput');
+        const jpegFileCount = document.getElementById('jpegFileCount');
+        const previewContainer = document.getElementById('previewContainer');
+        const convertJpegToPdfBtn = document.getElementById('convertJpegToPdfBtn');
+        const resetJpegToPdfBtn = document.getElementById('resetJpegToPdfBtn');
+        const loadingSpinnerJpegToPdf = document.getElementById('loadingSpinnerJpegToPdf');
+        const buttonTextJpegToPdf = document.getElementById('buttonTextJpegToPdf');
+
+        let selectedJpegFiles = []; // Array to store selected JPEG File objects
+
+        // jsPDF is loaded via CDN, access it from the global window object
+        const { jsPDF } = window.jspdf;
+
+        /**
+         * Shows the loading spinner and disables buttons for the JPEG to PDF Converter.
+         * @param {string} text - The text to display on the button.
+         */
+        function showLoadingJpegToPdf(text = 'Converting...') {
+            loadingSpinnerJpegToPdf.classList.remove('hidden');
+            buttonTextJpegToPdf.textContent = text;
+            convertJpegToPdfBtn.disabled = true;
+            convertJpegToPdfBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            resetJpegToPdfBtn.disabled = true;
+            resetJpegToPdfBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Hides the loading spinner and re-enables buttons for the JPEG to PDF Converter.
+         * @param {string} text - The default text for the button.
+         */
+        function hideLoadingJpegToPdf(text = 'Convert to PDF & Download') {
+            loadingSpinnerJpegToPdf.classList.add('hidden');
+            buttonTextJpegToPdf.textContent = text;
+            convertJpegToPdfBtn.disabled = selectedJpegFiles.length === 0;
+            convertJpegToPdfBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            resetJpegToPdfBtn.disabled = false;
+            resetJpegToPdfBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Renders image previews.
+         */
+        function renderImagePreviews() {
+            previewContainer.innerHTML = ''; // Clear existing previews
+            jpegFileCount.textContent = `${selectedJpegFiles.length} file(s) selected.`;
+
+            if (selectedJpegFiles.length === 0) {
+                convertJpegToPdfBtn.disabled = true;
+                return;
+            } else {
+                convertJpegToPdfBtn.disabled = false;
+            }
+
+            selectedJpegFiles.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imgDiv = document.createElement('div');
+                    imgDiv.classList.add('relative', 'group', 'overflow-hidden', 'rounded-lg', 'shadow-md');
+                    imgDiv.innerHTML = `
+                        <img src="${e.target.result}" alt="${file.name}" class="w-full h-32 object-cover transition-transform duration-300 group-hover:scale-105">
+                        <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                            <span class="text-white text-xs font-semibold px-2 py-1 bg-blue-600 rounded">${file.name}</span>
+                        </div>
+                    `;
+                    previewContainer.appendChild(imgDiv);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /**
+         * Handles the change event of the JPEG file input.
+         */
+        jpegInput.addEventListener('change', (event) => {
+            clearMessage();
+            selectedJpegFiles = Array.from(event.target.files);
+            renderImagePreviews();
+            if (selectedJpegFiles.length > 0) {
+                showMessage(`${selectedJpegFiles.length} JPEG file(s) selected.`, 'info');
+            } else {
+                showMessage('No JPEG files selected.', 'info');
+            }
+        });
+
+        /**
+         * Converts selected JPEG images to a PDF.
+         */
+        convertJpegToPdfBtn.addEventListener('click', async () => {
+            if (selectedJpegFiles.length === 0) {
+                showMessage('Please select at least one JPEG image.', 'error');
+                return;
+            }
+
+            showLoadingJpegToPdf();
+            clearMessage();
+
+            try {
+                // eslint-disable-next-line new-cap
+                const doc = new jsPDF();
+                // Clear the default first page if multiple images
+                if (selectedJpegFiles.length > 1) {
+                    doc.deletePage(1);
+                }
+
+                for (let i = 0; i < selectedJpegFiles.length; i++) {
+                    const file = selectedJpegFiles[i];
+                    showMessage(`Processing image: ${file.name} (${i + 1}/${selectedJpegFiles.length})`, 'info');
+
+                    const imgData = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                const imgWidth = img.width;
+                                const imgHeight = img.height;
+
+                                const pdfWidth = doc.internal.pageSize.getWidth();
+                                const pdfHeight = doc.internal.pageSize.getHeight();
+
+                                // Calculate scale factor to fit image within PDF page
+                                const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                                const scaledWidth = imgWidth * ratio;
+                                const scaledHeight = imgHeight * ratio;
+
+                                // Calculate offsets to center the image
+                                const xOffset = (pdfWidth - scaledWidth) / 2;
+                                const yOffset = (pdfHeight - scaledHeight) / 2;
+
+                                // Add page for subsequent images
+                                if (i > 0) {
+                                    doc.addPage();
+                                }
+                                doc.addImage(e.target.result, file.type.split('/')[1].toUpperCase(), xOffset, yOffset, scaledWidth, scaledHeight);
+                                resolve(); // Resolve the promise after adding the image
+                            };
+                            img.onerror = reject; // Reject if image loading fails
+                            img.src = e.target.result; // Set source to start loading the image
+                        };
+                        reader.onerror = reject; // Reject if FileReader encounters an error
+                        reader.readAsDataURL(file); // Read the file as Data URL
+                    });
+                }
+
+                // Save the PDF
+                doc.save('converted_images.pdf');
+                showMessage('PDF converted and downloaded successfully!', 'success');
+
+            } catch (error) {
+                console.error('Error converting images to PDF:', error);
+                showMessage('An error occurred during conversion. Please try again.', 'error');
+            } finally {
+                hideLoadingJpegToPdf();
+            }
+        });
+
+        /**
+         * Handles the click event of the reset button.
+         */
+        resetJpegToPdfBtn.addEventListener('click', () => {
+            jpegInput.value = ''; // Clear the file input
+            selectedJpegFiles = []; // Clear the selected files array
+            renderImagePreviews(); // Clear previews and update count
+            clearMessage(); // Clear any messages
+            showMessage('JPEG to PDF converter has been reset.', 'info');
+            hideLoadingJpegToPdf(); // Ensure buttons are in correct reset state
+        });
+
+
+        // =========================================================
+        // PDF Splitter Logic (from 6.html)
+        // =========================================================
+        const pdfInputSplitter = document.getElementById('pdfInputSplitter');
+        const fileInfoSplitter = document.getElementById('fileInfoSplitter');
+        const splitBtn = document.getElementById('splitBtn');
+        const resetSplitterBtn = document.getElementById('resetSplitterBtn');
+        const loadingSpinnerSplitter = document.getElementById('loadingSpinnerSplitter');
+        const buttonTextSplitter = document.getElementById('buttonTextSplitter');
+
+        let selectedPdfFileSplitter = null; // To store the selected PDF File object for splitting
+
+        // pdf-lib, JSZip, and FileSaver are loaded via CDNs (accessed globally)
+
+        /**
+         * Shows the loading spinner and disables buttons for the Splitter.
+         * @param {string} text - The text to display on the button.
+         */
+        function showLoadingSplitter(text = 'Splitting...') {
+            loadingSpinnerSplitter.classList.remove('hidden');
+            buttonTextSplitter.textContent = text;
+            splitBtn.disabled = true;
+            splitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            resetSplitterBtn.disabled = true;
+            resetSplitterBtn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Hides the loading spinner and re-enables buttons for the Splitter.
+         * @param {string} text - The default text for the button.
+         */
+        function hideLoadingSplitter(text = 'Split PDF and Download ZIP') {
+            loadingSpinnerSplitter.classList.add('hidden');
+            buttonTextSplitter.textContent = text;
+            splitBtn.disabled = selectedPdfFileSplitter === null; // Re-enable if file selected
+            splitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+            resetSplitterBtn.disabled = false;
+            resetSplitterBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+
+        /**
+         * Handles the change event of the file input for the Splitter.
+         */
+        pdfInputSplitter.addEventListener('change', (event) => {
+            clearMessage();
+            const files = event.target.files;
+            if (files.length === 0) {
+                fileInfoSplitter.textContent = 'No file selected.';
+                selectedPdfFileSplitter = null;
+                splitBtn.disabled = true;
+                return;
+            }
+            const file = files[0];
+            if (file.type === 'application/pdf') {
+                selectedPdfFileSplitter = file;
+                fileInfoSplitter.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                splitBtn.disabled = false;
+            } else {
+                showMessage('Please select a valid PDF file for splitting.', 'error');
+                fileInfoSplitter.textContent = 'No file selected.';
+                selectedPdfFileSplitter = null;
+                splitBtn.disabled = true;
+            }
+        });
+
+        /**
+         * Splits the selected PDF into individual pages and downloads them as a ZIP.
+         */
+        splitBtn.addEventListener('click', async () => {
+            if (!selectedPdfFileSplitter) {
+                showMessage('Please select a PDF file first.', 'error');
+                return;
+            }
+
+            showLoadingSplitter();
+            clearMessage();
+
+            try {
+                const fileReader = new FileReader();
+                fileReader.readAsArrayBuffer(selectedPdfFileSplitter);
+
+                fileReader.onload = async () => {
+                    const pdfBytes = new Uint8Array(fileReader.result);
+                    const pdfDoc = await PDFDocument.load(pdfBytes);
+                    const numberOfPages = pdfDoc.getPages().length;
+
+                    const zip = new JSZip();
+
+                    for (let i = 0; i < numberOfPages; i++) {
+                        showMessage(`Splitting page ${i + 1} of ${numberOfPages}...`, 'info');
+                        const newPdf = await PDFDocument.create();
+                        const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
+                        newPdf.addPage(copiedPage);
+
+                        const pagePdfBytes = await newPdf.save();
+                        const pageFileName = `${selectedPdfFileSplitter.name.replace('.pdf', '')}_page_${i + 1}.pdf`;
+                        zip.file(pageFileName, pagePdfBytes);
+                    }
+
+                    showMessage('Creating ZIP file...', 'info');
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+                    saveAs(zipBlob, `${selectedPdfFileSplitter.name.replace('.pdf', '')}_split_pages.zip`);
+                    showMessage('PDF split and downloaded as ZIP successfully!', 'success');
+                };
+
+                fileReader.onerror = (error) => {
+                    showMessage('Failed to read PDF file.', 'error');
+                    console.error('FileReader error:', error);
+                    hideLoadingSplitter(); // Ensure hideLoading is called on error
+                };
+
+            } catch (error) {
+                console.error('Error during PDF splitting:', error);
+                showMessage('An error occurred during splitting. Please ensure it is a valid PDF. Check console for details.', 'error');
+            } finally {
+                hideLoadingSplitter(); // This will re-enable the buttons after success/failure
+            }
+        });
+
+        /**
+         * Handles the click event of the reset button.
+         * Resets the file input, clears messages, and disables the split button.
+         */
+        resetSplitterBtn.addEventListener('click', () => {
+            pdfInputSplitter.value = ''; // Clear the file input
+            selectedPdfFileSplitter = null; // Clear the selected file reference
+            fileInfoSplitter.textContent = 'No file selected.'; // Reset file info
+            splitBtn.disabled = true; // Disable the split button initially
+            clearMessage(); // Clear any messages
+            showMessage('PDF splitter has been reset.', 'info');
+            hideLoadingSplitter('Split PDF and Download ZIP'); // Ensure buttons are in correct reset state
+        });
+
+
+        // =========================================================
+        // Initialization (to ensure correct initial states)
+        // =========================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // No tool is open by default, all content sections are hidden by CSS.
+            // When a header is clicked, it will open and others will close.
+            // Perform initial resets for all tools to set their default states
+            resetNumbererBtn.click();
+            resetOrganizerBtn.click();
+            resetConverterBtn.click(); // for PDF to JPEG
+            resetJpegToPdfBtn.click(); // for JPEG to PDF
+            resetSplitterBtn.click(); // for PDF Splitter
+            clearMessage(); // Ensure no initial message
+        });
+    </script>
+</body>
+</html>
